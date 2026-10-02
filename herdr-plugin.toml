@@ -6,14 +6,14 @@ description = "Distinct colors for agent panes."
 platforms = ["macos", "linux"]
 
 [[build]]
-command = ["sh","scripts/sync-themes.sh"]
+command = ["sh","./scripts/build/install.sh"]
 
 [[actions]]
 id = "themes"
 title = "Rebuild pane palettes"
-command = ["zsh","-c","source ./shell.zsh && herdr-themes-build"]
+command = ["./bin/herdr-colors","build"]
 
 [[actions]]
 id = "colorize"
 title = "Repaint panes at a prompt"
-command = ["zsh","-c","source ./shell.zsh && herdr-colorize"]
+command = ["./bin/herdr-colors","colorize"]

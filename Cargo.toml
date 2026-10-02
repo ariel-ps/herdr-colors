@@ -1,0 +1,11 @@
+[package]
+name = "herdr-colors"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "MIT"
+description = "Distinct, readable colors for Herdr panes"
+
+[dependencies]
+serde_json = "1.0"
+rand = "0.9"

@@ -1,5 +1,7 @@
 .DS_Store
+.env
+/target/
+/bin/herdr-colors
+/bin/.herdr-colors.*
 __pycache__/
 *.pyc
-.venv/
-.env

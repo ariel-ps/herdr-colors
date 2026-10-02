@@ -1,34 +1,67 @@
 # Herdr Colors
 
-Give each Herdr pane a distinct color.
+**Give each Herdr pane a distinct, readable color.**
 
-Installation downloads themes and generates palettes. New panes apply them automatically; `herdr-colorize` repaints existing panes at a shell prompt.
+A Rust application selects dark palettes, checks text contrast, and considers color differences under simulated deuteranopia. New panes apply their cached colors automatically; existing panes can be repainted at a shell prompt.
+
+```sh
+herdr-colors build 16 --print
+herdr-colors colorize
+```
 
 ## Install
 
-[Herdr Setup](https://github.com/ariel-ps/herdr-setup) installs prerequisites and lets you select this plugin in `dependencies.json`.
+[Herdr Setup](https://github.com/ariel-ps/herdr-setup) installs Herdr and the build dependencies. Supports macOS, Ubuntu/Debian, and Fedora, with Bash or Zsh.
 
-For standalone installation, you need Herdr 0.9.3+, Git, Python 3, uv, zsh, and jq:
+For standalone installation, you need Herdr 0.9.3+, Git, and a stable Rust toolchain (Cargo and rustc):
 
 ```sh
 herdr plugin install ariel-ps/herdr-colors --ref main --yes
+herdr plugin action invoke colorize --plugin dev.ariel.herdr-colors
 ```
 
-Use a commit or release tag instead of `main` to pin a version. Supports macOS, Ubuntu/Debian, and Fedora.
+Installation compiles the binary, downloads Kitty themes, and generates missing palettes. It preserves existing palettes and their cache location. The installed application needs Herdr and `ps` for repainting, and Git for theme downloads. Python, uv, jq, and Zsh are no longer runtime dependencies of this plugin.
 
-Herdr Setup loads the enabled plugin's helpers in bash or zsh. For a manual installation, source the installed plugin's `shell.bash` in `.bashrc` or `shell.zsh` in `.zshrc`. Bash helpers call the same zsh implementation, so zsh must also be installed; you keep bash as your shell.
+Herdr Setup loads `shell.bash` or `shell.zsh` automatically. For a standalone installation, source the installed plugin's loader from `.bashrc` or `.zshrc`, then open a new terminal. The loader adds the commands to `PATH` and applies cached colors inside Herdr panes.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `herdr-colors build [COUNT]` | Select and cache palettes; defaults to 16 |
+| `herdr-colors build --print` | Rebuild and print the selected theme names |
+| `herdr-colors build --max-lightness 55` | Set the maximum background lightness |
+| `herdr-colors colorize [PANE ...]` | Repaint selected panes, or every pane |
+| `herdr-colors apply [PANE]` | Emit colors for a pane; defaults to `HERDR_PANE_ID` |
+| `herdr-colors sync` | Download/update themes and prepare missing palettes |
+
+`herdr-themes-build` and `herdr-colorize` remain available with the same arguments. `apply --quiet` suppresses diagnostics during shell startup.
+
+Colors are cached under `${XDG_CACHE_HOME:-$HOME/.cache}/herdr-pane-themes`. Existing Python-generated caches remain readable. Set `HERDR_KIT_THEMES` to use a local directory of Kitty `.conf` themes. Malformed colors and duplicate color definitions are rejected before selection.
 
 ## No colors?
 
-Open a new terminal after installation, then launch Herdr. In a Herdr pane, run:
+Inside Herdr, at a shell prompt:
 
 ```sh
 herdr-themes-build
 herdr-colorize
 ```
 
-This also repairs older installations that downloaded themes without generating palettes. Existing palettes are preserved during upgrades; `herdr-themes-build` explicitly rebuilds them. Repainting is visible at a shell prompt; a full-screen agent may draw its own background over the pane color.
+A full-screen agent may draw its own background over the pane color. If commands are missing, open a new terminal after installation. If themes are missing, run `herdr-colors sync`.
+
+## Development
+
+```sh
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+python3 tests/test_plugin.py
+```
+
+Python is used only by the integration test. It builds an isolated copy in a path containing spaces and checks Bash/Zsh loading, old caches, invalid inputs, and real pseudo-terminal writes with mocked Herdr responses.
+
+Build and install locally with `sh scripts/build/install.sh`. This downloads themes unless `HERDR_KIT_THEMES` points to a local collection. Cargo dependencies are recorded in `Cargo.lock`.
 
 ## License
 
-Original project code is licensed under the [MIT License](LICENSE). Third-party code and media retain their own terms; this license does not grant rights to game assets, downloaded themes, or other third-party content.
+Original project code is licensed under the [MIT License](LICENSE). Third-party code and themes retain their own terms. See [selection provenance](docs/selection-provenance.md).
