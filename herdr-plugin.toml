@@ -1,0 +1,19 @@
+id = "dev.ariel.herdr-colors"
+name = "Pane Colors"
+version = "0.1.0"
+min_herdr_version = "0.9.3"
+description = "Distinct colors for agent panes."
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["sh","scripts/sync-themes.sh"]
+
+[[actions]]
+id = "themes"
+title = "Rebuild pane palettes"
+command = ["zsh","-c","source ./shell.zsh && herdr-themes-build"]
+
+[[actions]]
+id = "colorize"
+title = "Repaint panes at a prompt"
+command = ["zsh","-c","source ./shell.zsh && herdr-colorize"]
