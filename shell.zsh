@@ -26,6 +26,7 @@ __herdr_payload_for() {
   dir=$(__herdr_theme_cache)
   [ -r "$dir/current" ] || return 1
   count=$(<"$dir/current")
+  [[ "$count" == <1-> ]] || return 1
   [ -r "$dir/$count.txt" ] || return 1
   # Pane ids run p1..p9 then pA, pB — base 36, not decimal. Checked by stripping
   # every alnum rather than a glob, since the sourcing emulate has no extendedglob.
@@ -40,7 +41,7 @@ __herdr_apply_pane_theme() {
   [ -n "${HERDR_PANE_ID:-}" ] || return 0
   local payload
   payload=$(__herdr_payload_for "$HERDR_PANE_ID") || return 0
-  [ -n "$payload" ] && printf "$payload"
+  [ -n "$payload" ] && printf '%b' "$payload"
   return 0
 }
 
@@ -62,15 +63,19 @@ herdr-colorize() {
   else
     panes=("${(@f)$(herdr pane list | jq -r '.result.panes[].pane_id')}")
   fi
-  local pane pid tty payload
+  local pane pid tty payload rc=0
   for pane in $panes; do
-    payload=$(__herdr_payload_for "$pane") || { echo "$pane: no cached theme" >&2; continue; }
+    payload=$(__herdr_payload_for "$pane") || {
+      echo "$pane: no cached palette. Run herdr-themes-build, then herdr-colorize." >&2
+      rc=1; continue
+    }
     pid=$(herdr pane process-info --pane "$pane" 2>/dev/null | jq -r '.result.process_info.shell_pid // empty')
-    [ -n "$pid" ] || { echo "$pane: no shell pid" >&2; continue; }
+    [ -n "$pid" ] || { echo "$pane: no shell pid" >&2; rc=1; continue; }
     tty=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
-    [ -n "$tty" ] && [ -w "/dev/$tty" ] || { echo "$pane: no writable tty" >&2; continue; }
-    printf "$payload" > "/dev/$tty" && echo "$pane -> /dev/$tty"
+    [ -n "$tty" ] && [ -w "/dev/$tty" ] || { echo "$pane: no writable tty" >&2; rc=1; continue; }
+    printf '%b' "$payload" > "/dev/$tty" && echo "$pane -> /dev/$tty" || rc=1
   done
+  return $rc
 }
 
 

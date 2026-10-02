@@ -66,11 +66,13 @@ def main():
                     help="dark-only pool; passed straight to the GA")
     ap.add_argument("--print", action="store_true", help="dump chosen theme names")
     args = ap.parse_args()
+    if args.count < 1:
+        ap.error('count must be at least 1')
 
     for path, what in ((GA, "theme GA"), (THEMES, "theme cache")):
         if not os.path.exists(path):
             sys.exit(f"herdr-theme-cache: {what} missing at {path}"
-                     + ("  — run kitty-themes-sync" if what == "theme cache" else ""))
+                     + (" — reinstall Herdr Colors to download themes" if what == "theme cache" else ""))
 
     proc = subprocess.run(
         [sys.executable, GA, THEMES, str(args.count), "--max-lightness", args.max_lightness],

@@ -2,13 +2,13 @@
 
 Give each Herdr pane a distinct color.
 
-Run `herdr-themes-build` once to generate palettes. New panes apply them automatically; `herdr-colorize` repaints panes at a shell prompt.
+Installation downloads themes and generates palettes. New panes apply them automatically; `herdr-colorize` repaints existing panes at a shell prompt.
 
 ## Install
 
 [Herdr Setup](https://github.com/ariel-ps/herdr-setup) installs prerequisites and lets you select this plugin in `dependencies.json`.
 
-With Herdr 0.9.3+ already installed:
+For standalone installation, you need Herdr 0.9.3+, Git, Python 3, uv, zsh, and jq:
 
 ```sh
 herdr plugin install ariel-ps/herdr-colors --ref main --yes
@@ -17,6 +17,17 @@ herdr plugin install ariel-ps/herdr-colors --ref main --yes
 Use a commit or release tag instead of `main` to pin a version. Supports macOS, Ubuntu/Debian, and Fedora.
 
 Herdr Setup loads the enabled plugin's helpers in bash or zsh. For a manual installation, source the installed plugin's `shell.bash` in `.bashrc` or `shell.zsh` in `.zshrc`. Bash helpers call the same zsh implementation, so zsh must also be installed; you keep bash as your shell.
+
+## No colors?
+
+Open a new terminal after installation, then launch Herdr. In a Herdr pane, run:
+
+```sh
+herdr-themes-build
+herdr-colorize
+```
+
+This also repairs older installations that downloaded themes without generating palettes. Existing palettes are preserved during upgrades; `herdr-themes-build` explicitly rebuilds them. Repainting is visible at a shell prompt; a full-screen agent may draw its own background over the pane color.
 
 ## License
 

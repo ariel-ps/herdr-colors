@@ -22,16 +22,60 @@ def check():
         assert 'herdr-themes-build' in result.stdout
         assert 'herdr-colorize' in result.stdout
 
+        # The manifest build must prepare usable palettes on a fresh install.
+        # Stub only the network command; run the real palette generator.
+        tools = home / 'tools'
+        tools.mkdir()
+        git = tools / 'git'
+        git.write_text('#!/bin/sh\nexit 0\n')
+        git.chmod(0o755)
+        themes = home / 'themes'
+        themes.mkdir()
+        for index in range(20):
+            (themes / f'theme{index}.conf').write_text(
+                f'background #{index + 10:02x}2020\nforeground #ffffff\n')
+        env = {**os.environ, 'HOME': str(home), 'XDG_CACHE_HOME': str(home / 'cache'),
+               'HERDR_KIT_THEMES': str(themes), 'HERDR_PANE_ID': 'w1:pA',
+               'PATH': str(tools) + ':' + os.environ['PATH']}
+        result = subprocess.run(['sh', 'scripts/sync-themes.sh'], cwd=plugin,
+                                env=env, text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
         cache = home / 'cache/herdr-pane-themes'
-        cache.mkdir(parents=True)
+        assert (cache / 'current').read_text().strip() == '16'
+        assert len((cache / '16.txt').read_text().splitlines()) == 16
+        for shell, integration in [('bash', 'shell.bash'), ('zsh', 'shell.zsh')]:
+            result = subprocess.run([shell, '-fic', 'source "$1/$2"', 'check', str(plugin), integration],
+                                    env=env, text=True, capture_output=True)
+            assert result.returncode == 0, result.stderr
+            assert result.stdout.startswith('\x1b]11;#'), repr(result.stdout)
+
+        for invalid in ['0', '-1', 'not-a-number']:
+            (cache / 'current').write_text(invalid + '\n')
+            result = subprocess.run(['zsh', '-fc', 'source "$1/shell.zsh"; __herdr_payload_for w1:p1',
+                                     'check', str(plugin)], env=env, text=True, capture_output=True)
+            assert result.returncode == 1 and not result.stdout and not result.stderr, result
+        result = subprocess.run(['python3', str(plugin / 'scripts/theme-cache.py'), '0'],
+                                env=env, text=True, capture_output=True)
+        assert result.returncode == 2 and 'at least 1' in result.stderr
+
         (cache / 'current').write_text('1\n')
         (cache / '1.txt').write_text(r'\e]11;#123456\e\\' + '\n')
+        result = subprocess.run(['sh', 'scripts/sync-themes.sh'], cwd=plugin,
+                                env=env, text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
+        assert (cache / 'current').read_text() == '1\n', 'Upgrade replaced chosen palettes'
         result = subprocess.run(
             ['bash', '--noprofile', '--norc', '-ic', 'source "$1/shell.bash"', 'check', str(plugin)],
             env={**os.environ, 'HOME': str(home), 'XDG_CACHE_HOME': str(home / 'cache'),
                  'HERDR_PANE_ID': 'p1'}, text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
         assert result.stdout == '\x1b]11;#123456\x1b\\', repr(result.stdout)
+
+        (cache / 'current').unlink()
+        result = subprocess.run(['zsh', '-fc',
+                                 'source "$1/shell.zsh"; __herdr_colors_ready() { return 0; }; herdr-colorize w1:p1',
+                                 'check', str(plugin)], env=env, text=True, capture_output=True)
+        assert result.returncode == 1 and 'Run herdr-themes-build' in result.stderr, result
 
         # Verify bash forwards literal arguments, cwd, and failures to the implementation.
         commands = ["herdr-themes-build","herdr-colorize"]
