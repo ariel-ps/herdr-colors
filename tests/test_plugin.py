@@ -29,6 +29,9 @@ def check():
         assert result.returncode == 0, result.stderr
         assert 'hostile:' in result.stderr
         binary = plugin / 'bin/herdr-colors'
+        manifest = (plugin / 'herdr-plugin.toml').read_text()
+        assert 'command = ["./bin/herdr-themes-build"]' in manifest
+        assert 'command = ["./bin/herdr-colorize"]' in manifest
         cache = home / 'cache/herdr-pane-themes'
         assert (cache / 'current').read_text().strip() == '16'
         assert len((cache / '16.txt').read_text().splitlines()) == 16
@@ -53,6 +56,15 @@ def check():
                                     env=env, capture_output=True)
             assert result.returncode == 0, result.stderr
             assert result.stdout.startswith(b'\x1b]11;#'), result.stdout
+            relative = os.path.relpath(plugin, home)
+            result = subprocess.run(
+                [shell, '-fic', 'source "$1/shell.$2"; test "$_HERDR_COLORS_ROOT" = "$3"',
+                 'check', str(plugin), shell, str(plugin.resolve())],
+                cwd=home,
+                env={**env, 'HERDR_PLUGIN_ROOT': relative, 'CDPATH': str(home.parent)},
+                capture_output=True,
+            )
+            assert result.returncode == 0, result.stderr
         # An old cache remains readable and is preserved during sync/upgrades.
         (cache / 'current').write_text('1\n')
         (cache / '1.txt').write_text(r'\e]11;#123456\e\\' + '\n')

@@ -11,9 +11,9 @@ command = ["sh","./scripts/build/install.sh"]
 [[actions]]
 id = "themes"
 title = "Rebuild pane palettes"
-command = ["./bin/herdr-colors","build"]
+command = ["./bin/herdr-themes-build"]
 
 [[actions]]
 id = "colorize"
 title = "Repaint panes at a prompt"
-command = ["./bin/herdr-colors","colorize"]
+command = ["./bin/herdr-colorize"]
