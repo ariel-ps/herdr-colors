@@ -14,6 +14,6 @@ With Herdr 0.9.3+ already installed:
 herdr plugin install ariel-ps/herdr-colors --ref main --yes
 ```
 
-Use a commit or release tag instead of `main` to pin a version. Supports macOS and Ubuntu/Debian Linux.
+Use a commit or release tag instead of `main` to pin a version. Supports macOS, Ubuntu/Debian, and Fedora.
 
-Herdr Setup loads `shell.zsh` for enabled plugins when a new zsh starts. For a manual installation, source the installed plugin’s `shell.zsh` in your `.zshrc`.
+Herdr Setup loads the enabled plugin's helpers in bash or zsh. For a manual installation, source the installed plugin's `shell.bash` in `.bashrc` or `shell.zsh` in `.zshrc`. Bash helpers call the same zsh implementation, so zsh must also be installed; you keep bash as your shell.
