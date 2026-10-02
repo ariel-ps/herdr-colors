@@ -62,6 +62,16 @@ Python is used only by the integration test. It builds an isolated copy in a pat
 
 Build and install locally with `sh scripts/build/install.sh`. This downloads themes unless `HERDR_KIT_THEMES` points to a local collection. Cargo dependencies are recorded in `Cargo.lock`.
 
+## Repository layout
+
+- `src/` contains the Rust CLI, palette selection, and unit tests.
+- `bin/` contains the installed binary and compatibility launchers.
+- `shell.bash` and `shell.zsh` are thin shell loaders.
+- `scripts/build/install.sh` compiles the executable and prepares palettes.
+- `docs/selection-provenance.md` records the previous selector's origin.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
 ## License
 
 Original project code is licensed under the [MIT License](LICENSE). Third-party code and themes retain their own terms. See [selection provenance](docs/selection-provenance.md).

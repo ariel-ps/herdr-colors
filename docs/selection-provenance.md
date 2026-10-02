@@ -15,3 +15,8 @@ was retained; the Rust port does not resolve that historical provenance gap.
 Runtime libraries `serde_json` and `rand`, including their transitive dependencies,
 are recorded in `Cargo.lock` and retain their package licenses. Downloaded Kitty
 themes retain their upstream terms and are not redistributed in this repository.
+
+The imported Python file's SHA-256 was
+`7d6397fa912d2a52027b441675702a8356a6a26f80c642a41ed547285531096a`.
+The intermediate structure migration moved it to `vendor/theme-ga/theme-ga.py`
+without source changes; this port removes that unused Python implementation.
