@@ -1,5 +1,6 @@
 """Run directly: python3 tests/test_plugin.py."""
 import os
+import runpy
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,6 +13,22 @@ def check():
     # A relocated standalone plugin must work without the old toolkit or siblings.
     with tempfile.TemporaryDirectory(prefix='plugin user ') as temporary:
         home = Path(temporary)
+        parse = runpy.run_path(str(ROOT / 'scripts/theme-cache.py'))['parse_theme']
+        theme = home / 'theme.conf'
+        theme.write_text('background #123456\nforeground #abcdef\ncolor0 #ABCDEF\n')
+        assert parse(theme)['palette'][0] == '#ABCDEF'
+        for content in [r'background #123456\e]52;injected',
+                        'background #123456\x1b]52;injected',
+                        'background #123456\nbackground #abcdef',
+                        'background #123456\ncolor0 #%s%s%s',
+                        'background #123456\nforeground #abc']:
+            theme.write_text(content + '\n')
+            try:
+                parse(theme)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f'Unsafe color accepted: {content!r}')
         plugin = home / 'plugin copy'
         shutil.copytree(ROOT, plugin, ignore=shutil.ignore_patterns('.git', '__pycache__'))
         result = subprocess.run(
@@ -34,12 +51,14 @@ def check():
         for index in range(20):
             (themes / f'theme{index}.conf').write_text(
                 f'background #{index + 10:02x}2020\nforeground #ffffff\n')
+        (themes / 'hostile.conf').write_text('background #112233\ncolor0 #123456\\e]52;injected\n')
         env = {**os.environ, 'HOME': str(home), 'XDG_CACHE_HOME': str(home / 'cache'),
                'HERDR_KIT_THEMES': str(themes), 'HERDR_PANE_ID': 'w1:pA',
                'PATH': str(tools) + ':' + os.environ['PATH']}
         result = subprocess.run(['sh', 'scripts/sync-themes.sh'], cwd=plugin,
                                 env=env, text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
+        assert 'skipping' in result.stderr and 'hostile.conf' in result.stderr, result.stderr
         cache = home / 'cache/herdr-pane-themes'
         assert (cache / 'current').read_text().strip() == '16'
         assert len((cache / '16.txt').read_text().splitlines()) == 16

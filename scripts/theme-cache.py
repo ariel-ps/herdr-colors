@@ -14,9 +14,12 @@ theme to a finished OSC string, and writes one payload per line. Sourced herdr
 helpers then just read line N for their pane and print it.
 """
 import argparse
+import glob
 import os
+import re
 import subprocess
 import sys
+import tempfile
 
 # Resolved from this file, not from an install prefix: herdr hands a plugin its
 # own root and nothing else, so the only reliable anchor is where the script is.
@@ -33,14 +36,18 @@ PALETTE_KEYS = {f"color{i}": i for i in range(16)}
 
 
 def parse_theme(path):
-    """background/foreground/color0-15 out of a kitty .conf, hex kept as-is."""
+    """Read only literal RGB colors; theme text must never become OSC commands."""
     out = {"palette": {}}
+    seen = set()
     with open(path, errors="replace") as fh:
         for line in fh:
             parts = line.split()
-            if len(parts) != 2 or not parts[1].startswith("#"):
+            if not parts or parts[0] not in {"background", "foreground", *PALETTE_KEYS}:
                 continue
+            if len(parts) != 2 or not re.fullmatch(r'#[0-9A-Fa-f]{6}', parts[1]) or parts[0] in seen:
+                raise ValueError(f'{path}: invalid or duplicate color: {parts[0]}')
             key, value = parts
+            seen.add(key)
             if key in ("background", "foreground"):
                 out[key] = value
             elif key in PALETTE_KEYS:
@@ -74,10 +81,28 @@ def main():
             sys.exit(f"herdr-theme-cache: {what} missing at {path}"
                      + (" — reinstall Herdr Colors to download themes" if what == "theme cache" else ""))
 
-    proc = subprocess.run(
-        [sys.executable, GA, THEMES, str(args.count), "--max-lightness", args.max_lightness],
-        capture_output=True, text=True,
-    )
+    # Select from validated copies so malformed upstream themes cannot make
+    # palette generation fail at random, or inject escapes after selection.
+    valid = {}
+    with tempfile.TemporaryDirectory(prefix='herdr-themes-') as pool:
+        for path in glob.glob(os.path.join(THEMES, '*.conf')):
+            try:
+                theme = parse_theme(path)
+            except ValueError as exc:
+                print(f'herdr-theme-cache: skipping {exc}', file=sys.stderr)
+                continue
+            if theme is None:
+                continue
+            name = os.path.basename(path)[:-5]
+            valid[name] = theme
+            colors = {k: v for k, v in theme.items() if k != 'palette'}
+            colors.update({f'color{k}': v for k, v in theme['palette'].items()})
+            with open(os.path.join(pool, name + '.conf'), 'w') as fh:
+                fh.write(''.join(f'{k} {v}\n' for k, v in colors.items()))
+        proc = subprocess.run(
+            [sys.executable, GA, pool, str(args.count), "--max-lightness", args.max_lightness],
+            capture_output=True, text=True,
+        )
     if proc.returncode != 0:
         sys.exit(f"herdr-theme-cache: GA failed\n{proc.stderr.strip()}")
     names = [n for n in proc.stdout.split() if n]
@@ -86,9 +111,7 @@ def main():
 
     payloads = []
     for name in names:
-        theme = parse_theme(os.path.join(THEMES, f"{name}.conf"))
-        if theme is None:
-            sys.exit(f"herdr-theme-cache: no background in {name}.conf")
+        theme = valid[name]
         payloads.append(osc_payload(theme))
 
     os.makedirs(CACHE_DIR, exist_ok=True)
