@@ -144,12 +144,13 @@ pub fn load(directory: &Path, max_lightness: f64) -> Result<Vec<Theme>, String> 
         if path.extension().is_none_or(|e| e != "conf") {
             continue;
         }
-        let Some(name) = path.file_stem().and_then(|n| n.to_str()) else {
+        let Some(raw_name) = path.file_stem().and_then(|n| n.to_str()) else {
             continue;
         };
+        let name = safe_name(raw_name);
         match fs::read_to_string(&path)
             .map_err(|e| e.to_string())
-            .and_then(|text| Theme::parse(name.to_owned(), &text))
+            .and_then(|text| Theme::parse(name, &text))
         {
             Ok(theme) if theme.eligible(max_lightness) => themes.push(theme),
             Ok(_) => (),
@@ -158,6 +159,26 @@ pub fn load(directory: &Path, max_lightness: f64) -> Result<Vec<Theme>, String> 
     }
     themes.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(themes)
+}
+
+fn safe_name(name: &str) -> String {
+    let mut safe = String::with_capacity(name.len());
+    for character in name.chars() {
+        if character.is_control()
+            || matches!(
+                character,
+                '\u{061c}'
+                    | '\u{200e}'..='\u{200f}'
+                    | '\u{202a}'..='\u{202e}'
+                    | '\u{2066}'..='\u{2069}'
+            )
+        {
+            safe.extend(character.escape_default());
+        } else {
+            safe.push(character);
+        }
+    }
+    safe
 }
 
 fn distances(values: &[[f64; 3]]) -> Vec<Vec<f64>> {
@@ -296,6 +317,8 @@ mod tests {
             theme.payload(),
             "\\e]11;#123456\\e\\\\\\e]10;#abcdef\\e\\\\\\e]4;0;#ABCDEF\\e\\\\"
         );
+        assert_eq!(safe_name("bad\u{1b}name"), "bad\\u{1b}name");
+        assert_eq!(safe_name("bad\u{202e}name"), "bad\\u{202e}name");
     }
 
     #[test]

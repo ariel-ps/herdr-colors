@@ -80,6 +80,15 @@ fn build(count: usize, print: bool, max_lightness: f64) -> Result<()> {
 }
 
 fn pane_slot(pane: &str) -> Result<usize> {
+    let invalid = || format!("invalid pane ID: {}", pane.escape_default());
+    if pane.is_empty()
+        || pane.split(':').any(str::is_empty)
+        || !pane
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'_' | b'-'))
+    {
+        return Err(invalid());
+    }
     let id = pane
         .rsplit(':')
         .next()
@@ -87,12 +96,12 @@ fn pane_slot(pane: &str) -> Result<usize> {
         .strip_prefix('p')
         .unwrap_or("");
     if id.is_empty() || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
-        return Err(format!("invalid pane ID: {pane}"));
+        return Err(invalid());
     }
     usize::from_str_radix(id, 36)
         .ok()
         .and_then(|n| n.checked_sub(1))
-        .ok_or_else(|| format!("invalid pane ID: {pane}"))
+        .ok_or_else(invalid)
 }
 
 fn decode_payload(mut text: &str) -> Result<Vec<u8>> {
@@ -223,7 +232,7 @@ fn colorize(mut panes: Vec<String>) -> Result<()> {
     let mut failures = 0;
     for pane in panes {
         if let Err(error) = repaint(&pane) {
-            eprintln!("{pane}: {error}");
+            eprintln!("{}: {error}", pane.escape_default());
             failures += 1;
         }
     }
@@ -367,9 +376,12 @@ mod tests {
             "p0",
             "../bad",
             "p-1",
+            "\u{1b}[31m:p1",
+            "w1::p1",
             "p99999999999999999999999999999999999",
         ] {
-            assert!(pane_slot(id).is_err());
+            let error = pane_slot(id).unwrap_err();
+            assert!(!error.contains('\u{1b}'));
         }
         assert_eq!(
             decode_payload("\\e]11;#123456\\e\\\\").unwrap(),
