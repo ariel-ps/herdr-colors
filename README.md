@@ -29,6 +29,17 @@ herdr-colorize
 
 This also repairs older installations that downloaded themes without generating palettes. Existing palettes are preserved during upgrades; `herdr-themes-build` explicitly rebuilds them. Repainting is visible at a shell prompt; a full-screen agent may draw its own background over the pane color.
 
+## Repository layout
+
+- `shell.zsh` and `shell.bash` are the public shell loaders.
+- `scripts/build/sync-themes.sh` downloads the theme pool during installation.
+- `libexec/theme-cache.py` privately builds the cached pane palettes.
+- `vendor/theme-ga/theme-ga.py` selects distinct themes; its available provenance and licensing information is recorded in [`vendor/theme-ga/ORIGIN.md`](vendor/theme-ga/ORIGIN.md).
+
+Downloaded themes and generated palettes stay in the user's XDG cache and are not committed to this repository.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
 ## License
 
 Original project code is licensed under the [MIT License](LICENSE). Third-party code and media retain their own terms; this license does not grant rights to game assets, downloaded themes, or other third-party content.

@@ -1,5 +1,6 @@
 """Run directly: python3 tests/test_plugin.py."""
 import os
+import re
 import runpy
 from pathlib import Path
 import shutil
@@ -10,10 +11,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def check():
+    manifest = (ROOT / 'herdr-plugin.toml').read_text()
+    assert re.search(r'(?m)^id = "dev\.ariel\.herdr-colors"$', manifest)
+    assert re.search(r'(?m)^command = \["sh", "\./scripts/build/sync-themes\.sh"\]$', manifest)
+    assert manifest.count('[[actions]]') == 2
+    assert re.findall(r'(?m)^id = "(themes|colorize)"$', manifest) == ['themes', 'colorize']
+
     # A relocated standalone plugin must work without the old toolkit or siblings.
     with tempfile.TemporaryDirectory(prefix='plugin user ') as temporary:
         home = Path(temporary)
-        parse = runpy.run_path(str(ROOT / 'scripts/theme-cache.py'))['parse_theme']
+        parse = runpy.run_path(str(ROOT / 'libexec/theme-cache.py'))['parse_theme']
         theme = home / 'theme.conf'
         theme.write_text('background #123456\nforeground #abcdef\ncolor0 #ABCDEF\n')
         assert parse(theme)['palette'][0] == '#ABCDEF'
@@ -55,7 +62,7 @@ def check():
         env = {**os.environ, 'HOME': str(home), 'XDG_CACHE_HOME': str(home / 'cache'),
                'HERDR_KIT_THEMES': str(themes), 'HERDR_PANE_ID': 'w1:pA',
                'PATH': str(tools) + ':' + os.environ['PATH']}
-        result = subprocess.run(['sh', 'scripts/sync-themes.sh'], cwd=plugin,
+        result = subprocess.run(['sh', str(plugin / 'scripts/build/sync-themes.sh')], cwd=home,
                                 env=env, text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
         assert 'skipping' in result.stderr and 'hostile.conf' in result.stderr, result.stderr
@@ -73,13 +80,13 @@ def check():
             result = subprocess.run(['zsh', '-fc', 'source "$1/shell.zsh"; __herdr_payload_for w1:p1',
                                      'check', str(plugin)], env=env, text=True, capture_output=True)
             assert result.returncode == 1 and not result.stdout and not result.stderr, result
-        result = subprocess.run(['python3', str(plugin / 'scripts/theme-cache.py'), '0'],
+        result = subprocess.run(['python3', str(plugin / 'libexec/theme-cache.py'), '0'],
                                 env=env, text=True, capture_output=True)
         assert result.returncode == 2 and 'at least 1' in result.stderr
 
         (cache / 'current').write_text('1\n')
         (cache / '1.txt').write_text(r'\e]11;#123456\e\\' + '\n')
-        result = subprocess.run(['sh', 'scripts/sync-themes.sh'], cwd=plugin,
+        result = subprocess.run(['sh', str(plugin / 'scripts/build/sync-themes.sh')], cwd=home,
                                 env=env, text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
         assert (cache / 'current').read_text() == '1\n', 'Upgrade replaced chosen palettes'

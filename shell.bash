@@ -1,5 +1,6 @@
 # Bash entry points reuse the plugin's zsh implementation.
-_HERDR_COLORS_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+_HERDR_COLORS_ROOT=${HERDR_PLUGIN_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}
+_HERDR_COLORS_ROOT=$(CDPATH= cd -- "$_HERDR_COLORS_ROOT" && pwd -P)
 export PATH="$_HERDR_COLORS_ROOT/bin:$PATH"
 
 herdr-themes-build() {

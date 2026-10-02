@@ -24,12 +24,12 @@ import tempfile
 # Resolved from this file, not from an install prefix: herdr hands a plugin its
 # own root and nothing else, so the only reliable anchor is where the script is.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GA = os.path.join(ROOT, "vendor", "theme-ga.py")
+GA = os.path.join(ROOT, "vendor", "theme-ga", "theme-ga.py")
 
 CACHE = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
-# The palette pool is a clone, not a committed asset — scripts/sync-assets.sh
-# puts it here. A kit that vendored 409 themes would be mostly other people's
-# colour schemes.
+# The palette pool is a clone, not a committed asset —
+# scripts/build/sync-themes.sh puts it here. A plugin that vendored 409 themes
+# would be mostly other people's colour schemes.
 THEMES = os.environ.get("HERDR_KIT_THEMES", os.path.join(CACHE, "kitty-themes/themes"))
 CACHE_DIR = os.path.join(CACHE, "herdr-pane-themes")
 PALETTE_KEYS = {f"color{i}": i for i in range(16)}

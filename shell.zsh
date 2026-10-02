@@ -1,5 +1,6 @@
 # Source this file from zsh to load this plugin's commands.
-typeset -g _HERDR_COLORS_ROOT="${0:A:h}"
+typeset -g _HERDR_COLORS_ROOT="${HERDR_PLUGIN_ROOT:-${0:A:h}}"
+_HERDR_COLORS_ROOT="${_HERDR_COLORS_ROOT:A}"
 typeset -U path
 path=("$_HERDR_COLORS_ROOT/bin" $path)
 
@@ -16,7 +17,7 @@ __herdr_theme_cache() { print -r -- "${XDG_CACHE_HOME:-$HOME/.cache}/herdr-pane-
 # usage: herdr-themes-build [count] [--print]
 #   Slow and deliberate; the result is what every new pane reads at startup.
 herdr-themes-build() {
-  uv run --no-project python "$_HERDR_COLORS_ROOT/scripts/theme-cache.py" "$@"
+  uv run --no-project python "$_HERDR_COLORS_ROOT/libexec/theme-cache.py" "$@"
 }
 
 # Resolve a pane id to its cached OSC payload. Silent on anything unexpected so
