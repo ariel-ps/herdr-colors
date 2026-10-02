@@ -1,0 +1,29 @@
+shell.zsh
+  bf4f3cd588eb6649 3
+tests/test_plugin.py
+  bf4f3cd588eb6649 32-34,59-67
+herdr-plugin.toml
+  bf4f3cd588eb6649 14,19
+shell.bash
+  bf4f3cd588eb6649 2-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "2.0.0",
+  "base_commit_sha": "f6c3d22b7f56715ea3bdd5f489a163a37af5e4c6",
+  "prompts": {
+    "bf4f3cd588eb6649": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3915ae20-4ead-48ce-939d-0be3a4df8049",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ariel-ps <ariel@prompt.security>",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 3,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    }
+  }
+}
