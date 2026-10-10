@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest release and the current default branch.
+Until the first tagged release, security fixes are provided for the current default branch. Afterward, the latest release and the current default branch will be supported.
 
 ## Reporting a vulnerability
 

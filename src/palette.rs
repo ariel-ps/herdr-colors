@@ -1,6 +1,8 @@
 use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
 use std::{collections::BTreeMap, fs, path::Path};
 
+pub const MIN_CVD_DISTANCE: f64 = 10.0;
+
 #[derive(Debug)]
 pub struct Theme {
     pub name: String,
@@ -53,6 +55,27 @@ fn deuteranopia([r, g, b]: [f64; 3]) -> [f64; 3] {
         (0.280085 * r + 0.672501 * g + 0.047413 * b).clamp(0.0, 1.0),
         (-0.011820 * r + 0.042940 * g + 0.968881 * b).clamp(0.0, 1.0),
     ])
+}
+
+pub fn background_distances(a: &str, b: &str) -> Result<(f64, f64), String> {
+    if !valid_color(a) || !valid_color(b) {
+        return Err("background distance requires #RRGGBB colors".into());
+    }
+    let (a, b) = (linear(a), linear(b));
+    Ok((
+        lab(a)
+            .iter()
+            .zip(lab(b))
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f64>()
+            .sqrt(),
+        deuteranopia(a)
+            .iter()
+            .zip(deuteranopia(b))
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f64>()
+            .sqrt(),
+    ))
 }
 
 fn luminance(color: &str) -> f64 {
@@ -109,16 +132,25 @@ impl Theme {
         })
     }
 
-    fn eligible(&self, max_lightness: f64) -> bool {
+    fn rejection_reason(&self, max_lightness: f64) -> Option<&'static str> {
         let chroma = self.lab[1].hypot(self.lab[2]);
-        self.lab[0] >= 5.0
-            && self.lab[0] <= max_lightness
-            && (3.0..=25.0).contains(&chroma)
-            && self
-                .colors
-                .get("foreground")
-                .is_some_and(|fg| contrast(&self.colors["background"], fg) >= 4.5)
-            && colorfulness(&self.colors) <= 150.0
+        if self.lab[0] < 5.0 || self.lab[0] > max_lightness {
+            Some("background lightness")
+        } else if !(3.0..=25.0).contains(&chroma) {
+            Some("background chroma")
+        } else if self
+            .colors
+            .get("foreground")
+            .is_none_or(|fg| contrast(&self.colors["background"], fg) < 4.5)
+        {
+            Some("foreground contrast")
+        } else if !(0..16).all(|i| self.colors.contains_key(&format!("color{i}"))) {
+            Some("incomplete ANSI palette")
+        } else if colorfulness(&self.colors) > 150.0 {
+            Some("palette colorfulness")
+        } else {
+            None
+        }
     }
 
     pub fn payload(&self) -> String {
@@ -137,6 +169,7 @@ impl Theme {
 
 pub fn load(directory: &Path, max_lightness: f64) -> Result<Vec<Theme>, String> {
     let mut themes = Vec::new();
+    let mut rejected = BTreeMap::<&str, usize>::new();
     let files = fs::read_dir(directory)
         .map_err(|e| format!("{}: {e}. Run herdr-colors sync.", directory.display()))?;
     for entry in files {
@@ -152,12 +185,25 @@ pub fn load(directory: &Path, max_lightness: f64) -> Result<Vec<Theme>, String> 
             .map_err(|e| e.to_string())
             .and_then(|text| Theme::parse(name, &text))
         {
-            Ok(theme) if theme.eligible(max_lightness) => themes.push(theme),
-            Ok(_) => (),
+            Ok(theme) => {
+                if let Some(reason) = theme.rejection_reason(max_lightness) {
+                    *rejected.entry(reason).or_default() += 1;
+                } else {
+                    themes.push(theme);
+                }
+            }
             Err(error) => eprintln!("herdr-colors: skipping {error}"),
         }
     }
     themes.sort_by(|a, b| a.name.cmp(&b.name));
+    if !rejected.is_empty() {
+        let summary = rejected
+            .into_iter()
+            .map(|(reason, count)| format!("{reason}: {count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        eprintln!("herdr-colors: filtered themes ({summary})");
+    }
     Ok(themes)
 }
 
@@ -211,10 +257,65 @@ fn min_pairwise(genes: &[usize], distances: &[Vec<f64>]) -> f64 {
 
 fn score(genes: &[usize], normal: &[Vec<f64>], cvd: &[Vec<f64>]) -> f64 {
     let safety = min_pairwise(genes, cvd);
-    if safety < 10.0 {
-        safety - 10.0
+    if safety < MIN_CVD_DISTANCE {
+        safety - MIN_CVD_DISTANCE
     } else {
         min_pairwise(genes, normal)
+    }
+}
+
+fn threshold_selection(distances: &[Vec<f64>], count: usize) -> Result<Option<Vec<usize>>, ()> {
+    fn search(
+        chosen: &mut Vec<usize>,
+        candidates: &[usize],
+        distances: &[Vec<f64>],
+        count: usize,
+        attempts: &mut usize,
+    ) -> bool {
+        if chosen.len() == count {
+            return true;
+        }
+        let needed = count - chosen.len();
+        if candidates.len() < needed || *attempts == 0 {
+            return false;
+        }
+        for (position, &candidate) in candidates.iter().enumerate() {
+            if candidates.len() - position < needed || *attempts == 0 {
+                break;
+            }
+            *attempts -= 1;
+            let next = candidates[position + 1..]
+                .iter()
+                .copied()
+                .filter(|&other| distances[candidate][other] >= MIN_CVD_DISTANCE)
+                .collect::<Vec<_>>();
+            chosen.push(candidate);
+            if search(chosen, &next, distances, count, attempts) {
+                return true;
+            }
+            chosen.pop();
+        }
+        false
+    }
+
+    let mut candidates = (0..distances.len()).collect::<Vec<_>>();
+    candidates.sort_by_key(|&candidate| {
+        std::cmp::Reverse(
+            distances[candidate]
+                .iter()
+                .filter(|&&distance| distance >= MIN_CVD_DISTANCE)
+                .count(),
+        )
+    });
+    let mut selected = Vec::with_capacity(count);
+    // ponytail: bounded exact fallback; raise the budget or use a clique solver for huge theme sets.
+    let mut attempts = 1_000_000;
+    if search(&mut selected, &candidates, distances, count, &mut attempts) {
+        Ok(Some(selected))
+    } else if attempts == 0 {
+        Err(())
+    } else {
+        Ok(None)
     }
 }
 
@@ -230,6 +331,157 @@ fn tournament(scores: &[f64], rng: &mut StdRng) -> usize {
         .iter()
         .max_by(|&&a, &&b| scores[a].total_cmp(&scores[b]))
         .unwrap()
+}
+
+fn assignment_score(
+    assignment: &[usize],
+    edges: &[(usize, usize)],
+    normal: &[Vec<f64>],
+    cvd: &[Vec<f64>],
+) -> f64 {
+    let mut min_normal = f64::INFINITY;
+    let mut min_cvd = f64::INFINITY;
+    let mut total_normal = 0.0;
+    for &(a, b) in edges {
+        let (a, b) = (assignment[a], assignment[b]);
+        min_normal = min_normal.min(normal[a][b]);
+        min_cvd = min_cvd.min(cvd[a][b]);
+        total_normal += normal[a][b];
+    }
+    let average = total_normal / edges.len() as f64;
+    if min_cvd < MIN_CVD_DISTANCE {
+        min_cvd - MIN_CVD_DISTANCE + average * 1e-6
+    } else {
+        min_normal + average * 1e-6
+    }
+}
+
+pub fn assign(
+    backgrounds: &[String],
+    pane_count: usize,
+    edges: &[(usize, usize)],
+    base: &[usize],
+    seed: u64,
+) -> Result<Vec<usize>, String> {
+    if pane_count == 0 || backgrounds.is_empty() || base.len() != pane_count {
+        return Err(
+            "palette assignment requires panes, backgrounds, and one base slot per pane".into(),
+        );
+    }
+    if base.iter().any(|&slot| slot >= backgrounds.len())
+        || edges
+            .iter()
+            .any(|&(a, b)| a >= pane_count || b >= pane_count || a == b)
+    {
+        return Err("invalid palette assignment input".into());
+    }
+    if edges.is_empty() {
+        return Ok(base.to_vec());
+    }
+
+    let mut normal = vec![vec![0.0; backgrounds.len()]; backgrounds.len()];
+    let mut cvd = normal.clone();
+    for a in 0..backgrounds.len() {
+        for b in a + 1..backgrounds.len() {
+            let (normal_distance, cvd_distance) =
+                background_distances(&backgrounds[a], &backgrounds[b])?;
+            normal[a][b] = normal_distance;
+            normal[b][a] = normal_distance;
+            cvd[a][b] = cvd_distance;
+            cvd[b][a] = cvd_distance;
+        }
+    }
+
+    let unique = pane_count <= backgrounds.len();
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut population = Vec::with_capacity(60);
+    if !unique || {
+        let mut slots = base.to_vec();
+        slots.sort_unstable();
+        slots.dedup();
+        slots.len() == pane_count
+    } {
+        population.push(base.to_vec());
+    }
+    while population.len() < 60 {
+        let assignment = if unique {
+            let mut slots = (0..backgrounds.len()).collect::<Vec<_>>();
+            slots.shuffle(&mut rng);
+            slots.truncate(pane_count);
+            slots
+        } else {
+            (0..pane_count)
+                .map(|_| rng.random_range(0..backgrounds.len()))
+                .collect()
+        };
+        population.push(assignment);
+    }
+
+    let generations = (80 + edges.len() * pane_count).clamp(80, 300);
+    let mut best = population[0].clone();
+    let mut best_score = f64::NEG_INFINITY;
+    for generation in 0..=generations {
+        let scores = population
+            .iter()
+            .map(|assignment| assignment_score(assignment, edges, &normal, &cvd))
+            .collect::<Vec<_>>();
+        for (assignment, &score) in population.iter().zip(&scores) {
+            if score > best_score {
+                best = assignment.clone();
+                best_score = score;
+            }
+        }
+        if generation == generations {
+            break;
+        }
+        let mut next = vec![best.clone()];
+        while next.len() < 60 {
+            let first = tournament(&scores, &mut rng);
+            let second = tournament(&scores, &mut rng);
+            let mut child = population[first]
+                .iter()
+                .zip(&population[second])
+                .map(|(&a, &b)| if rng.random_bool(0.5) { a } else { b })
+                .collect::<Vec<_>>();
+            if unique {
+                let mut used = vec![false; backgrounds.len()];
+                let mut duplicates = Vec::new();
+                for (position, &slot) in child.iter().enumerate() {
+                    if used[slot] {
+                        duplicates.push(position);
+                    } else {
+                        used[slot] = true;
+                    }
+                }
+                let mut available = used
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, used)| (!used).then_some(slot))
+                    .collect::<Vec<_>>();
+                available.shuffle(&mut rng);
+                for (position, slot) in duplicates.into_iter().zip(available) {
+                    child[position] = slot;
+                }
+                if pane_count > 1 && rng.random_bool(0.25) {
+                    let a = rng.random_range(0..pane_count);
+                    let mut b = rng.random_range(0..pane_count);
+                    while a == b {
+                        b = rng.random_range(0..pane_count);
+                    }
+                    child.swap(a, b);
+                }
+            } else {
+                for slot in &mut child {
+                    if rng.random_bool(0.15) {
+                        *slot = rng.random_range(0..backgrounds.len());
+                    }
+                }
+            }
+            next.push(child);
+        }
+        population = next;
+    }
+    Ok(best)
 }
 
 pub fn select(themes: &[Theme], count: usize, seed: u64) -> Result<Vec<usize>, String> {
@@ -256,7 +508,7 @@ pub fn select(themes: &[Theme], count: usize, seed: u64) -> Result<Vec<usize>, S
     let generations = (1_500_000 / (60 * (count * (count - 1) / 2))).clamp(80, 500);
     let mut best = population[0].clone();
     let mut best_score = f64::NEG_INFINITY;
-    for _ in 0..generations {
+    for generation in 0..=generations {
         let scores: Vec<_> = population
             .iter()
             .map(|genes| score(genes, &normal, &cvd))
@@ -266,6 +518,9 @@ pub fn select(themes: &[Theme], count: usize, seed: u64) -> Result<Vec<usize>, S
                 best = genes.clone();
                 best_score = value;
             }
+        }
+        if generation == generations {
+            break;
         }
         let mut next = vec![best.clone()];
         while next.len() < 60 {
@@ -289,6 +544,21 @@ pub fn select(themes: &[Theme], count: usize, seed: u64) -> Result<Vec<usize>, S
             next.push(child);
         }
         population = next;
+    }
+    if min_pairwise(&best, &cvd) < MIN_CVD_DISTANCE {
+        best = match threshold_selection(&cvd, count) {
+            Ok(Some(selection)) => selection,
+            Ok(None) => {
+                return Err(format!(
+                    "no set of {count} themes reaches deuteranopia distance {MIN_CVD_DISTANCE}; reduce COUNT"
+                ))
+            }
+            Err(()) => {
+                return Err(format!(
+                    "search limit reached for {count} themes at deuteranopia distance {MIN_CVD_DISTANCE}; reduce COUNT"
+                ))
+            }
+        };
     }
     Ok(best)
 }
@@ -342,16 +612,34 @@ mod tests {
         assert!((white[0] - 100.0).abs() < 0.01);
         assert!((contrast("#000000", "#ffffff") - 21.0).abs() < 0.001);
         assert_eq!(lab(linear("#000000")), [0.0, 0.0, 0.0]);
-        let themes: Vec<_> = (10..30)
+        let complete_palette = (0..16)
+            .map(|i| format!("color{i} #808080"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let eligible_themes: Vec<_> = (10..30)
             .map(|v| {
                 Theme::parse(
                     format!("theme{v}"),
-                    &format!("background #{v:02x}2020\nforeground #ffffff"),
+                    &format!("background #{v:02x}2020\nforeground #ffffff\n{complete_palette}"),
                 )
                 .unwrap()
             })
             .collect();
-        assert!(themes.iter().filter(|t| t.eligible(55.0)).count() >= 16);
+        assert!(
+            eligible_themes
+                .iter()
+                .filter(|theme| theme.rejection_reason(55.0).is_none())
+                .count()
+                >= 16
+        );
+        let themes: Vec<_> = (0..20)
+            .map(|value| Theme {
+                name: format!("theme{value}"),
+                colors: BTreeMap::new(),
+                lab: [value as f64 * 20.0, 0.0, 0.0],
+                cvd: [value as f64 * 20.0, 0.0, 0.0],
+            })
+            .collect();
         let chosen = select(&themes, 16, 42).unwrap();
         let mut unique = chosen.clone();
         unique.sort();
@@ -360,7 +648,76 @@ mod tests {
         assert_eq!(chosen, select(&themes, 16, 42).unwrap());
         assert!(select(&themes, 0, 42).is_err());
         assert!(select(&themes, 21, 42).is_err());
-        // Gate failures must still produce a solution, even when every score is below -1.
-        assert_eq!(select(&themes[..2], 2, 42).unwrap().len(), 2);
+        let indistinguishable = vec![
+            Theme {
+                name: "one".into(),
+                colors: BTreeMap::new(),
+                lab: [0.0, 0.0, 0.0],
+                cvd: [0.0, 0.0, 0.0],
+            },
+            Theme {
+                name: "two".into(),
+                colors: BTreeMap::new(),
+                lab: [20.0, 0.0, 0.0],
+                cvd: [1.0, 0.0, 0.0],
+            },
+        ];
+        assert!(select(&indistinguishable, 2, 42).is_err());
+        let duplicate_heavy = [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [40.0, 0.0, 0.0],
+            [60.0, 0.0, 0.0],
+        ];
+        assert_eq!(
+            threshold_selection(&distances(&duplicate_heavy), 4)
+                .unwrap()
+                .unwrap()
+                .len(),
+            4
+        );
+        let backgrounds = vec![
+            "#101020".to_string(),
+            "#605060".to_string(),
+            "#001030".to_string(),
+            "#907050".to_string(),
+        ];
+        let edges = vec![(0, 1), (1, 2), (2, 3)];
+        let assigned = assign(&backgrounds, 4, &edges, &[0, 1, 2, 3], 42).unwrap();
+        assert_eq!(
+            assigned,
+            assign(&backgrounds, 4, &edges, &[0, 1, 2, 3], 42).unwrap()
+        );
+        let mut unique = assigned.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), 4);
+        assert_eq!(
+            assign(&backgrounds, 2, &[], &[3, 1], 42).unwrap(),
+            vec![3, 1]
+        );
+    }
+
+    #[test]
+    #[ignore = "expensive release-mode assignment sweep"]
+    fn assignment_avoids_equal_colors_on_path_edges() {
+        let backgrounds = ["#101020", "#605060", "#001030", "#907050"].map(str::to_string);
+        for pane_count in [5, 8, 16, 32, 64, 80] {
+            let edges = (0..pane_count - 1)
+                .map(|pane| (pane, pane + 1))
+                .collect::<Vec<_>>();
+            let base = (0..pane_count)
+                .map(|pane| pane % backgrounds.len())
+                .collect::<Vec<_>>();
+            for seed in 0..100 {
+                let assigned = assign(&backgrounds, pane_count, &edges, &base, seed).unwrap();
+                assert!(
+                    edges.iter().all(|&(a, b)| assigned[a] != assigned[b]),
+                    "equal adjacent slots for pane_count={pane_count}, seed={seed}"
+                );
+            }
+        }
     }
 }

@@ -6,6 +6,10 @@ It preserves its CIE Lab conversion, deuteranopia simulation, contrast/chroma/
 colorfulness filters, and genetic search defaults. Different random generators
 mean that individual selected sets can differ from Python.
 
+The Rust integration additionally requires complete ANSI palettes and returns an
+error when no selected set reaches the original minimum simulated-deuteranopia
+distance, instead of silently accepting the best failing set.
+
 The original helper came from a personal dotfiles repository whose URL and
 revision were not retained. The earliest recoverable copy is herdr-kit commit
 `bb1d56a500865fe7993a3672ba75561bcb40db76`; it entered Herdr Colors at

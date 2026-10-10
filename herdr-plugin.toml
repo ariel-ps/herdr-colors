@@ -2,7 +2,7 @@ id = "dev.ariel.herdr-colors"
 name = "Pane Colors"
 version = "0.1.0"
 min_herdr_version = "0.9.3"
-description = "Distinct colors for agent panes."
+description = "Readable color slots for agent panes."
 platforms = ["macos", "linux"]
 
 [[build]]
